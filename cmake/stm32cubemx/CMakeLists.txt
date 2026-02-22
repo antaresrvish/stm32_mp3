@@ -15,7 +15,6 @@ set(MX_Include_Dirs
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Drivers/CMSIS/Device/ST/STM32F4xx/Include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Drivers/CMSIS/Include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Drivers/OLED
 )
 
 # STM32CubeMX generated application sources
@@ -46,8 +45,6 @@ set(STM32_Drivers_Src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_cortex.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_exti.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Drivers/OLED/ssd1306.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Drivers/OLED/ssd1306_fonts.c
 )
 
 # Drivers Midllewares
