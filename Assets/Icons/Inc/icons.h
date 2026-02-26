@@ -16,3 +16,4 @@ extern const uint8_t control_forward[8];
 extern const uint8_t control_repeat[8];
 extern const uint8_t control_repeat_one[16];
 extern const uint8_t control_mix[8];
+extern const uint8_t control_memory[32];

@@ -45,16 +45,18 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
-    Assets/Icons/icons.c
-    Drivers/OLED/ssd1306.c
-    Drivers/OLED/ssd1306_fonts.c
+    Assets/Icons/Src/icons.c
+    Libs/ssd1306/Src/ssd1306.c
+    Libs/ssd1306/Src/ssd1306_fonts.c
+    Core/Src/Layout/track.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
-    Assets/Icons
-    Drivers/OLED
+    Assets/Icons/Inc
+    Libs/ssd1306/Inc
+    Core/Inc/Layout
 )
 
 # Add project symbols (macros)
