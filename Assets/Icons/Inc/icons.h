@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-extern const uint8_t info_battery[16];
+extern const uint8_t info_battery[24];
 extern const uint8_t info_headset[8];
 extern const uint8_t info_volume[8];
 

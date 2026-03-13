@@ -97,7 +97,7 @@ int main(void)
 // ssd1306_SetCursor(0, 0);
 // ssd1306_WriteString("fung jey poq ", Font_6x8, WHITE);
 // ssd1306_UpdateScreen();
-  Track_Init_UI("laugh till u cry", "faydee");
+  Track_Init_UI("Back In Black With You", "AC/DC");
   /* USER CODE END 2 */
 
   /* Infinite loop */

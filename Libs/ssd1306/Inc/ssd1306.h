@@ -106,13 +106,49 @@ extern I2C_HandleTypeDef SSD1306_I2C_PORT;
 
 /** @brief Interval in milliseconds between each scroll step. */
 #ifndef SCROLL_INTERVAL_MS
-#define SCROLL_INTERVAL_MS 350
+#define SCROLL_INTERVAL_MS 30
 #endif
 
 /** @brief Maximum number of scroll labels that can be registered globally. */
 #ifndef SCROLL_REGISTRY_MAX
 #define SCROLL_REGISTRY_MAX 8
 #endif
+
+/**
+ * @brief Number of pixels advanced per scroll step.
+ *        Increase for faster/coarser scrolling, 1 = smoothest.
+ */
+#ifndef SCROLL_SPEED_PX
+#define SCROLL_SPEED_PX 1
+#endif
+
+/**
+ * @brief Maximum number of vertical pages (8 px each) a scroll font can span.
+ *        Supports fonts up to (SCROLL_MAX_PAGES * 8) pixels tall.
+ *        Default covers fonts up to 32 px tall.
+ */
+#ifndef SCROLL_MAX_PAGES
+#define SCROLL_MAX_PAGES 4
+#endif
+
+/**
+ * @brief Maximum glyph width (in pixels) of any font used with scroll labels.
+ *        Used to size the internal pixel buffer.
+ *        Increase if you use a wider font.
+ */
+#ifndef SCROLL_MAX_FONT_W
+#define SCROLL_MAX_FONT_W 11
+#endif
+
+/**
+ * @brief Total pixel-column capacity of the scroll pixel buffer.
+ *        Automatically derived from SCROLL_BUF_MAX and SCROLL_MAX_FONT_W.
+ * @note  RAM cost per SSD1306_Scroll_t instance:
+ *        SCROLL_MAX_PAGES * SCROLL_PIXEL_COLS_MAX bytes.
+ *        With defaults (4 * 1408 = 5632 bytes) — suitable for STM32F4.
+ *        Reduce SCROLL_BUF_MAX or SCROLL_MAX_FONT_W for smaller MCUs.
+ */
+#define SCROLL_PIXEL_COLS_MAX (SCROLL_BUF_MAX * SCROLL_MAX_FONT_W)
 
 /**
  * @brief Color enumeration for the display.
@@ -144,19 +180,44 @@ typedef struct {
 /**
  * @brief Software scrolling label state structure.
  *
- * Holds all state needed to display a continuously scrolling text label
+ * Holds all state needed to display a continuously pixel-scrolling text label
  * on a fixed-width region of the screen.
+ *
+ * On ssd1306_ScrollWrite() the full text is rendered once into pixel_buf,
+ * a private page-based bitmap. Each ssd1306_ScrollTick() then blits a
+ * SCROLL_SPEED_PX-advanced window from pixel_buf directly into
+ * SSD1306_Buffer — producing smooth sub-character pixel scrolling.
+ *
+ * @note  scroll->y MUST be page-aligned (y % 8 == 0).
+ *        Standard font positions (y = 0, 8, 16, 24, …) satisfy this
+ *        automatically.
+ *
+ * @note  pixel_buf layout:
+ *          byte = pixel_buf[page * SCROLL_PIXEL_COLS_MAX + col]
+ *          bit  = row within the 8-pixel page (bit 0 = topmost row)
  */
 typedef struct {
   char buf[SCROLL_BUF_MAX]; /**< Circular text buffer ("text   " with gap). */
   int len;                  /**< Length of buf content; 0 means no scrolling. */
-  int offset;            /**< Current rotation start index in buf.          */
-  uint32_t last_tick;    /**< HAL tick value at the last scroll step.       */
-  uint8_t x;             /**< X position of the label on the display.       */
-  uint8_t y;             /**< Y position of the label on the display.       */
-  uint8_t visible_chars; /**< Number of characters visible at once.         */
-  uint8_t font_w;        /**< Width of a single character in pixels.        */
-  SSD1306_Font_t font;   /**< Font used to render the scrolling text.       */
+  int pixel_offset;         /**< Current pixel-column scroll position.        */
+  int total_px;             /**< Total pixel width of the rendered text in
+                                 pixel_buf; 0 until ssd1306_ScrollWrite().    */
+  uint32_t last_tick;       /**< HAL tick value at the last scroll step.      */
+  uint8_t x;                /**< X position of the label on the display.      */
+  uint8_t y;                /**< Y position of the label on the display.
+                                 Must be a multiple of 8.                     */
+  uint8_t visible_chars;    /**< Number of characters visible at once.        */
+  uint8_t font_w;           /**< Width of a single character in pixels.       */
+  SSD1306_Font_t font;      /**< Font used to render the scrolling text.      */
+
+  /**
+   * @brief Private pixel bitmap for the full rendered text.
+   *
+   * Sized for SCROLL_MAX_PAGES vertical pages and SCROLL_PIXEL_COLS_MAX
+   * horizontal columns. Populated once by ssd1306_ScrollWrite(); read-only
+   * afterwards until the next ssd1306_ScrollWrite() call.
+   */
+  uint8_t pixel_buf[SCROLL_MAX_PAGES * SCROLL_PIXEL_COLS_MAX];
 } SSD1306_Scroll_t;
 
 /**
@@ -293,9 +354,10 @@ uint8_t ssd1306_GetDisplayOn(void);
 
 /**
  * @brief  Initializes a software scroll label structure.
- * @param  scroll            Pointer to an SSD1306_Scroll_t instance to initialize.
+ * @param  scroll         Pointer to an SSD1306_Scroll_t instance to initialize.
  * @param  x              X position of the label on the display (pixels).
  * @param  y              Y position of the label on the display (pixels).
+ *                        Must be a multiple of 8 (e.g. 0, 8, 16, 24…).
  * @param  visible_chars  Number of characters that fit in the visible window.
  * @param  font           Font to use when rendering the scrolling text.
  */
@@ -304,21 +366,24 @@ void ssd1306_ScrollInit(SSD1306_Scroll_t *scroll, uint8_t x, uint8_t y,
 
 /**
  * @brief  Loads new text into the scroll label.
- * @param  scroll   Pointer to an initialized SSD1306_Scroll_t instance.
- * @param  text  Null-terminated string to display.
+ * @param  scroll  Pointer to an initialized SSD1306_Scroll_t instance.
+ * @param  text    Null-terminated string to display.
  * @note   If the text fits within the visible window, it is shown statically.
- *         Otherwise, a circular scroll buffer is prepared and scrolling begins
- *         on the next ssd1306_ScrollTick() / ssd1306_ScrollTickAll() call.
+ *         Otherwise the full text is rendered into the internal pixel buffer
+ *         and smooth pixel-based scrolling begins on the next
+ *         ssd1306_ScrollTick() / ssd1306_ScrollTickAll() call.
  *         The display is updated immediately after this call.
  */
 void ssd1306_ScrollWrite(SSD1306_Scroll_t *scroll, const char *text);
 
 /**
- * @brief  Advances the scroll label by one step if the scroll interval has
- * elapsed.
- * @param  scroll  Pointer to an initialized and loaded SSD1306_Scroll_t instance.
+ * @brief  Advances the scroll label by SCROLL_SPEED_PX pixels if the scroll
+ *         interval has elapsed.
+ * @param  scroll  Pointer to an initialized and loaded SSD1306_Scroll_t
+ *                 instance.
  * @note   Call this function periodically (e.g. from your main loop or a timer
- *         callback). The scroll speed is controlled by SCROLL_INTERVAL_MS.
+ *         callback). Scroll speed is controlled by SCROLL_INTERVAL_MS and
+ *         SCROLL_SPEED_PX.
  */
 void ssd1306_ScrollTick(SSD1306_Scroll_t *scroll);
 
@@ -326,7 +391,8 @@ void ssd1306_ScrollTick(SSD1306_Scroll_t *scroll);
  * @brief  Registers a scroll label in the global registry.
  * @param  scroll  Pointer to the SSD1306_Scroll_t instance to register.
  * @note   Registered labels are updated automatically by
- * ssd1306_ScrollTickAll(). Up to SCROLL_REGISTRY_MAX labels may be registered.
+ *         ssd1306_ScrollTickAll(). Up to SCROLL_REGISTRY_MAX labels may be
+ *         registered.
  */
 void ssd1306_ScrollRegister(SSD1306_Scroll_t *scroll);
 
@@ -367,7 +433,7 @@ void ssd1306_WriteData(uint8_t *buffer, size_t buff_size);
  * @param  buf  Pointer to the source buffer.
  * @param  len  Number of bytes to copy.
  * @return SSD1306_OK on success, SSD1306_ERR if len exceeds
- * SSD1306_BUFFER_SIZE.
+ *         SSD1306_BUFFER_SIZE.
  */
 SSD1306_Error_t ssd1306_FillBuffer(uint8_t *buf, uint32_t len);
 
